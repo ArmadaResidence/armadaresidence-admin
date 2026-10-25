@@ -1,7 +1,7 @@
 # Builds the dashboard from the public website repository (admin/ of ArmadaResidence/armadaresidence-website) and
 # publishes it to this repository's GitHub Pages site → admin.armadaresidence.com (DECISIONS.md 2026-10-25).
-# Triggers: manual (gh workflow run deploy.yml), a repository_dispatch from the website repo (event
-# "admin-deploy"), or a push here (this repo holds nothing but this workflow and the README).
+# Triggers: manual (gh workflow run deploy.yml -R ArmadaResidence/armadaresidence-admin) or a repository_dispatch from
+# the website repository (event "admin-deploy"). A push here never deploys: this repository holds only this workflow.
 # Variables (Settings → Variables): VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY (public values), ADMIN_DOMAIN
 # (admin.armadaresidence.com once the CNAME exists; leave empty to serve under /armadaresidence-admin/ meanwhile).
 name: Deploy dashboard
@@ -13,8 +13,6 @@ on:
         default: main
   repository_dispatch:
     types: [admin-deploy]
-  push:
-    branches: [main]
 permissions:
   contents: read
   pages: write
@@ -24,15 +22,23 @@ concurrency:
   cancel-in-progress: true
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           repository: ArmadaResidence/armadaresidence-website
           ref: ${{ github.event.inputs.ref || github.event.client_payload.ref || 'main' }}
-      - uses: actions/setup-node@v4
+      - name: Check the dashboard source is there
+        run: |
+          if [ ! -f admin/package.json ]; then
+            echo "::error::admin/ is not on this ref of armadaresidence-website — nothing to build"
+            exit 1
+          fi
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
+          cache: npm
+          cache-dependency-path: admin/package-lock.json
       - name: Install
         working-directory: admin
         run: npm ci --no-audit --no-fund
@@ -48,12 +54,12 @@ jobs:
           cp dist/index.html dist/404.html
           if [ -n "${{ vars.ADMIN_DOMAIN }}" ]; then echo "${{ vars.ADMIN_DOMAIN }}" > dist/CNAME; fi
           touch dist/.nojekyll
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: admin/dist
   deploy:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
