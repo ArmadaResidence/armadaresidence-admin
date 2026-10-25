@@ -86,5 +86,6 @@ jobs:
       - name: CORS, preflight and gateway JWT of every dashboard function, from the deployed origin and the domain
         env:
           SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
-          ADMIN_ORIGINS: https://admin.armadaresidence.com,${{ needs.deploy.outputs.page_url }}
+          # the domain, the GitHub Pages origin (kept as a fallback redirect URL in Supabase) and whatever Pages deployed to
+          ADMIN_ORIGINS: https://admin.armadaresidence.com,https://armadaresidence.github.io,${{ needs.deploy.outputs.page_url }}
         run: node scripts/admin-cors-check.mjs
