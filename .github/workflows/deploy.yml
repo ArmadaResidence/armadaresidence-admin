@@ -2,6 +2,9 @@
 # publishes it to this repository's GitHub Pages site → admin.armadaresidence.com (DECISIONS.md 2026-10-25).
 # Triggers: manual (gh workflow run deploy.yml -R ArmadaResidence/armadaresidence-admin) or a repository_dispatch from
 # the website repository (event "admin-deploy"). A push here never deploys: this repository holds only this workflow.
+# After the deploy, `verify` runs the website repository's scripts/admin-cors-check.mjs: every function the dashboard
+# calls must answer the CORS preflight from the deployed origin and from admin.armadaresidence.com and refuse POSTs
+# without a valid token (incident 25 Oct 2026). A failure marks the run red — the site is live, but the dashboard is not usable.
 # Variables (Settings → Variables): VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY (public values), ADMIN_DOMAIN
 # (admin.armadaresidence.com once the CNAME exists; leave empty to serve under /armadaresidence-admin/ meanwhile).
 name: Deploy dashboard
@@ -63,6 +66,25 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+  verify:
+    needs: deploy
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: ArmadaResidence/armadaresidence-website
+          ref: ${{ github.event.inputs.ref || github.event.client_payload.ref || 'main' }}
+          sparse-checkout: scripts
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: CORS, preflight and gateway JWT of every dashboard function, from the deployed origin and the domain
+        env:
+          SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          ADMIN_ORIGINS: https://admin.armadaresidence.com,${{ needs.deploy.outputs.page_url }}
+        run: node scripts/admin-cors-check.mjs
